@@ -1,0 +1,8 @@
+name              = "nutribot"
+main              = "src/index.js"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding      = "DB"
+database_name = "nutribot-db"
+database_id  = "REEMPLAZAR_CON_TU_D1_ID"
