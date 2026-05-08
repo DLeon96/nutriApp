@@ -7,12 +7,15 @@ import makeWASocket, {
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { processMessage } from './ai.js';
-import { logFood, logExercise, getTodaySummary, getUserConfig, deleteLastFood } from './db.js';
+import { logFood, logExercise, getTodaySummary, getUserConfig, setUserConfig, deleteLastFood, isNewUser } from './db.js';
 import { simulateTyping } from './humanizer.js';
 
 const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const AUTH_DIR   = path.join(__dirname, '..', 'auth_info_baileys');
-const OWNER      = process.env.OWNER_PHONE || null; // Si está definido, solo responde al dueño
+// Lista blanca de números permitidos (separados por coma). Vacío = todos pueden usar el bot.
+const ALLOWED = process.env.ALLOWED_PHONES
+  ? process.env.ALLOWED_PHONES.split(',').map(n => n.trim()).filter(Boolean)
+  : [];
 
 // Logger silencioso para Baileys (evita spam en consola)
 const silentLogger = {
@@ -81,8 +84,8 @@ async function handleMessage(sock, msg) {
   const jid    = msg.key.remoteJid;
   const userId = jid.split('@')[0]; // número de teléfono como ID
 
-  // Si OWNER_PHONE está definido, solo responder a ese número
-  if (OWNER && userId !== OWNER) return;
+  // Si hay lista blanca, solo responder a esos números
+  if (ALLOWED.length > 0 && !ALLOWED.includes(userId)) return;
 
   // Ignorar grupos si el JID termina en @g.us
   if (jid.endsWith('@g.us')) return;
@@ -94,6 +97,7 @@ async function handleMessage(sock, msg) {
   try { await sock.readMessages([msg.key]); } catch {}
 
   // Obtener contexto del día y config del usuario
+  const newUser = isNewUser(userId);
   const summary = getTodaySummary(userId);
   const config  = getUserConfig(userId);
 
@@ -106,12 +110,12 @@ async function handleMessage(sock, msg) {
       aiResponse = await processMessage({
         userId, text: content.caption || 'Analiza este alimento',
         imageBuffer: buffer, imageMime: mimeType,
-        summary, config,
+        summary, config, newUser,
       });
     } else {
       aiResponse = await processMessage({
         userId, text: content.text,
-        summary, config,
+        summary, config, newUser,
       });
     }
   } catch (err) {
@@ -136,6 +140,9 @@ async function handleMessage(sock, msg) {
         calories_burned: aiResponse.data.calories_burned || 0,
         steps:           aiResponse.data.steps           || 0,
       });
+      break;
+    case 'set_config':
+      if (aiResponse.data) setUserConfig(userId, aiResponse.data);
       break;
     case 'delete_last':
       deleteLastFood(userId);

@@ -108,6 +108,10 @@ export function setUserConfig(userId, config) {
   `).run(userId, config.name || null, config.goal_calories || 2000, config.goal_protein || 150);
 }
 
+export function isNewUser(userId) {
+  return !db.prepare('SELECT 1 FROM user_config WHERE user_id = ?').get(userId);
+}
+
 export function deleteLastFood(userId) {
   const last = db.prepare(`
     SELECT id FROM food_log WHERE user_id = ? ORDER BY id DESC LIMIT 1

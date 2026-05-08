@@ -14,7 +14,7 @@ CAPACIDADES:
 FORMATO DE RESPUESTA OBLIGATORIO — siempre responde en JSON válido con esta estructura:
 {
   "message": "tu respuesta conversacional en español, amigable y con emojis",
-  "action": "log_food" | "log_exercise" | "log_steps" | "delete_last" | "query" | null,
+  "action": "log_food" | "log_exercise" | "log_steps" | "set_config" | "delete_last" | "query" | null,
   "data": { ... }
 }
 
@@ -27,6 +27,10 @@ Para log_exercise:
 Para log_steps:
 "data": { "steps": número, "calories_burned": número }
 
+Para set_config (cuando el usuario da su nombre o meta calórica):
+"data": { "name": "nombre", "goal_calories": número, "goal_protein": número }
+(puedes omitir los campos que no se mencionen)
+
 Para delete_last o query: omite "data"
 
 REGLAS DE COMPORTAMIENTO:
@@ -36,7 +40,13 @@ REGLAS DE COMPORTAMIENTO:
 3. Para imágenes de comida: identifica el plato principal y estima una porción visual realista.
 4. Si el usuario dice "borré", "borra", "elimina lo último" o /borrar → action: "delete_last"
 5. Si el usuario pide resumen, balance o "¿cuánto llevo?" → usa el contexto del día proporcionado y responde con action: null
-6. Responde ÚNICAMENTE en JSON. Nada de texto fuera del JSON.`;
+6. Responde ÚNICAMENTE en JSON. Nada de texto fuera del JSON.
+
+ONBOARDING (solo cuando el contexto indique [USUARIO NUEVO]):
+- Saluda con entusiasmo, preséntate brevemente
+- Explica en 2 líneas qué puedes hacer (texto, fotos, ejercicio, resumen diario)
+- Pregunta su nombre y cuántas calorías quiere consumir al día
+- Usa action: null en la bienvenida (aún no hay nada que registrar)`;
 
 // Historial de conversación por usuario (últimas 10 rondas)
 const histories = new Map();
@@ -64,7 +74,7 @@ function pushHistory(userId, role, text) {
   if (hist.length > 20) hist.splice(0, 2); // descarta el par más antiguo
 }
 
-function buildContextPrompt(userMessage, summary, config) {
+function buildContextPrompt(userMessage, summary, config, newUser = false) {
   const { foodTotals, exerciseTotals, foods, exercises, date } = summary;
   const net = Math.round(foodTotals.calories - exerciseTotals.calories_burned);
 
@@ -80,7 +90,10 @@ function buildContextPrompt(userMessage, summary, config) {
       ).join('\n')
     : '  (sin registros)';
 
-  return `[CONTEXTO DEL DÍA — ${date}]
+  const header = newUser ? '[USUARIO NUEVO — saluda y haz onboarding]\n' : '';
+
+  return `${header}[CONTEXTO DEL DÍA — ${date}]
+Usuario: ${config.name || 'sin nombre aún'}
 Meta calórica: ${config.goal_calories} kcal | Meta proteína: ${config.goal_protein}g
 Consumido: ${Math.round(foodTotals.calories)} kcal (P:${Math.round(foodTotals.protein)}g C:${Math.round(foodTotals.carbs)}g F:${Math.round(foodTotals.fat)}g)
 Alimentos registrados:
@@ -93,8 +106,8 @@ Balance neto: ${net} kcal
 Mensaje del usuario: ${userMessage}`;
 }
 
-export async function processMessage({ userId, text, imageBuffer, imageMime, summary, config }) {
-  const contextPrompt = buildContextPrompt(text || '(imagen)', summary, config);
+export async function processMessage({ userId, text, imageBuffer, imageMime, summary, config, newUser }) {
+  const contextPrompt = buildContextPrompt(text || '(imagen)', summary, config, newUser);
 
   const model   = getModel();
   const history = getHistory(userId);
